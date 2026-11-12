@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <!-- The repository contains hand-authored Properties/AssemblyInfo.cs files. -->
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+
+    <!-- This solution contains Windows Forms and WPF targets. This also permits
+         restoring Windows targeting packs when the build host is not Windows. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+</Project>

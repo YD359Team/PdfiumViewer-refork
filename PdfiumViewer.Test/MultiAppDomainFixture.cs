@@ -1,130 +1,63 @@
-﻿using System;
-using System.Collections.Generic;
+using System;
+using System.IO;
 using System.Linq;
-using System.Text;
-using System.Threading;
+using System.Threading.Tasks;
 using NUnit.Framework;
 
 namespace PdfiumViewer.Test
 {
+    /// <summary>
+    /// Verifies that independent documents can be loaded and rendered from
+    /// several managed threads. .NET (Core) does not support creating and
+    /// unloading secondary AppDomains, so the old AppDomain-based test has
+    /// been replaced by a concurrency test with the same stress-test intent.
+    /// </summary>
     [TestFixture]
-    public class MultiAppDomainFixture
+    public class PdfiumConcurrencyFixture
     {
         [Test]
-        public void MultipleAppDomains()
+        public async Task MultipleWorkersCanLoadAndRenderDocuments()
         {
-            RunThreads();
-        }
+            const int workerCount = 10;
+            const int iterationsPerWorker = 20;
 
-        [Test]
-        public void MultipleAppDomainsAndCurrent()
-        {
-            using (var runner = new Runner())
-            {
-                runner.Run();
-
-                RunThreads();
-            }
-        }
-
-        private void RunThreads()
-        {
-            const int scripts = 10;
-            const int iterations = 20;
-            var threads = new List<Thread>();
-
-            for (int i = 0; i < scripts; i++)
-            {
-                var thread = new Thread(() =>
+            Task[] workers = Enumerable.Range(0, workerCount)
+                .Select(worker => Task.Run(() =>
                 {
-                    try
+                    for (int iteration = 0; iteration < iterationsPerWorker; iteration++)
                     {
-                        for (int j = 0; j < iterations; j++)
+                        int exampleNumber = ((worker + iteration) % 2) + 1;
+                        Stream stream = OpenExample(exampleNumber);
+
+                        using (PdfDocument document = PdfDocument.Load(stream))
                         {
-                            using (var runner = new Runner())
+                            for (int page = 0; page < document.PageCount; page++)
                             {
-                                runner.Run();
+                                using (var image = document.Render(page, 96f, 96f, false))
+                                {
+                                    Assert.That(image, Is.Not.Null);
+                                    Assert.That(image.Width, Is.GreaterThan(0));
+                                    Assert.That(image.Height, Is.GreaterThan(0));
+                                }
                             }
                         }
                     }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine(ex);
-                        Console.WriteLine(ex.StackTrace);
-                    }
-                });
+                }))
+                .ToArray();
 
-                threads.Add(thread);
-                thread.Start();
-            }
-
-            foreach (var thread in threads)
-            {
-                thread.Join();
-            }
+            await Task.WhenAll(workers);
         }
 
-        private class Script : MarshalByRefObject
+        private static Stream OpenExample(int exampleNumber)
         {
-            public void Run()
-            {
-                using (var stream = typeof(MultiAppDomainFixture).Assembly.GetManifestResourceStream(
-                    typeof(MultiAppDomainFixture).Namespace + ".Example" + (new Random().Next(2) + 1) + ".pdf"
-                ))
-                {
-                    var document = PdfDocument.Load(stream);
+            string resourceName = string.Format(
+                "{0}.Example{1}.pdf",
+                typeof(PdfiumConcurrencyFixture).Namespace,
+                exampleNumber);
 
-                    for (int i = 0; i < document.PageCount; i++)
-                    {
-                        using (document.Render(i, 96, 96, false))
-                        {
-                        }
-                    }
-                }
-            }
-        }
-
-        private class Runner : IDisposable
-        {
-            private bool _disposed;
-            private AppDomain _appDomain;
-
-            public Runner()
-            {
-                _appDomain = AppDomain.CreateDomain(
-                    "Unit test",
-                    AppDomain.CurrentDomain.Evidence,
-                    new AppDomainSetup
-                    {
-                        ApplicationBase = AppDomain.CurrentDomain.SetupInformation.ApplicationBase,
-                        ApplicationName = "Unit test"
-                    }
-                );
-            }
-
-            public void Run()
-            {
-                var script = (Script)_appDomain.CreateInstanceAndUnwrap(
-                    typeof(Script).Assembly.FullName,
-                    typeof(Script).FullName
-                );
-
-                script.Run();
-            }
-
-            public void Dispose()
-            {
-                if (!_disposed)
-                {
-                    if (_appDomain != null)
-                    {
-                        AppDomain.Unload(_appDomain);
-                        _appDomain = null;
-                    }
-
-                    _disposed = true;
-                }
-            }
+            return typeof(PdfiumConcurrencyFixture).Assembly.GetManifestResourceStream(resourceName)
+                ?? throw new InvalidOperationException(
+                    "Embedded PDF test resource was not found: " + resourceName);
         }
     }
 }

@@ -56,6 +56,7 @@ namespace PdfiumViewer
         /// <summary>
         /// Gets or sets the currently focused page.
         /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public int Page
         {
             get
@@ -115,6 +116,7 @@ namespace PdfiumViewer
         /// <summary>
         /// Gets or sets the way the document should be zoomed initially.
         /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public PdfViewerZoomMode ZoomMode
         {
             get { return _zoomMode; }
@@ -128,6 +130,7 @@ namespace PdfiumViewer
         /// <summary>
         /// Gets or sets the current rotation of the PDF document.
         /// </summary>
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public PdfRotation Rotation
         {
             get { return _rotation; }
