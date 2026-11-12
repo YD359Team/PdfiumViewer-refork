@@ -1,23 +1,26 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFrameworks>net48;net10.0-windows</TargetFrameworks>
-    <UseWindowsForms>true</UseWindowsForms>
+	<PropertyGroup>
+		<TargetFrameworks>net48;net10.0-windows</TargetFrameworks>
+		<UseWindowsForms>true</UseWindowsForms>
 
-    <AssemblyName>PdfiumViewer</AssemblyName>
-    <RootNamespace>PdfiumViewer</RootNamespace>
+		<AssemblyName>PdfiumViewer</AssemblyName>
+		<RootNamespace>PdfiumViewer</RootNamespace>
 
-    <Nullable>disable</Nullable>
-    <ImplicitUsings>disable</ImplicitUsings>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<Nullable>disable</Nullable>
+		<ImplicitUsings>disable</ImplicitUsings>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 
-    <Platforms>AnyCPU;x86;x64</Platforms>
-  </PropertyGroup>
+		<Platforms>AnyCPU;x86;x64</Platforms>
+	</PropertyGroup>
 
-  <!-- SDK-style projects resolve framework assemblies implicitly. The old
-       Reference elements were incorrectly placed in a PropertyGroup. -->
-  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
-    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies"
-                      Version="1.0.3"
-                      PrivateAssets="All" />
-  </ItemGroup>
+	<ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+		<PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies"
+						  Version="1.0.3"
+						  PrivateAssets="All" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<EmbeddedResource Include="pan.cur"
+						  LogicalName="PdfiumViewer.pan.cur" />
+	</ItemGroup>
 </Project>
