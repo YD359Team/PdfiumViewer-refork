@@ -1,0 +1,19 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="PdfiumViewer.Demo/PdfiumViewer.Demo.csproj" Id="add131f6-17eb-4e42-932f-74cbe6dbeeb3">
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="Debug|x86" Project="x86" />
+  </Project>
+  <Project Path="PdfiumViewer.Test/PdfiumViewer.Test.csproj" Id="61083268-3f14-47b7-8753-af69bb3d0891">
+    <Build Solution="Release|x86" Project="false" />
+  </Project>
+  <Project Path="PdfiumViewer.WPFDemo/PdfiumViewer.WPFDemo.csproj" Id="cbd6c52a-f0f4-48b8-957b-8cad54acd837">
+    <Platform Solution="*|x64" Project="x64" />
+    <Platform Solution="*|x86" Project="x86" />
+  </Project>
+  <Project Path="PdfiumViewer/PdfiumViewer.csproj" Id="438914b6-5d1c-482c-b942-5c0e057eef6f" />
+</Solution>
