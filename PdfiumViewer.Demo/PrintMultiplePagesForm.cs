@@ -6,6 +6,8 @@ using System.Drawing;
 using System.Text;
 using System.Windows.Forms;
 
+#pragma warning disable CA1416
+
 namespace PdfiumViewer.Demo
 {
     public partial class PrintMultiplePagesForm : Form

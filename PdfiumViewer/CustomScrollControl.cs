@@ -8,6 +8,7 @@ using System.Text;
 using System.Windows.Forms;
 
 #pragma warning disable 1591
+#pragma warning disable CA1416
 
 namespace PdfiumViewer
 {

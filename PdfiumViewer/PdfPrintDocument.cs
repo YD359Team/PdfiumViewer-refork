@@ -4,6 +4,8 @@ using System.Drawing;
 using System.Drawing.Printing;
 using System.Text;
 
+#pragma warning disable CA1416
+
 namespace PdfiumViewer
 {
     internal class PdfPrintDocument : PrintDocument

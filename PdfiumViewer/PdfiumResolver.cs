@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.Text;
 
+#pragma warning disable CA1416
+
 namespace PdfiumViewer
 {
     public class PdfiumResolver

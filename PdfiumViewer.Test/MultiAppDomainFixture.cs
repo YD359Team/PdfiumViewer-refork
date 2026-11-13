@@ -4,6 +4,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using NUnit.Framework;
 
+#pragma warning disable CA1416
+
 namespace PdfiumViewer.Test
 {
     /// <summary>

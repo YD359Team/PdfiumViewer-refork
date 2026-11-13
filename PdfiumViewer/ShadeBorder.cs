@@ -5,6 +5,8 @@ using System.Drawing.Drawing2D;
 using System.Text;
 using System.Windows.Forms;
 
+#pragma warning disable CA1416
+
 namespace PdfiumViewer
 {
     internal class ShadeBorder : IDisposable

@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media.Imaging;
 
+#pragma warning disable CA1416
+
 namespace PdfiumViewer.WPFDemo
 {
     /// <summary>

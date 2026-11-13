@@ -3,6 +3,8 @@ using System.Windows.Media.Imaging;
 using System.Drawing;
 using System.Windows.Media;
 
+#pragma warning disable CA1416
+
 namespace PdfiumViewer.WPFDemo
 {
     internal class BitmapHelper
