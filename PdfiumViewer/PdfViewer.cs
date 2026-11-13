@@ -151,6 +151,40 @@ namespace PdfiumViewer
             UpdateEnabled();
         }
 
+        #region Public API methods
+
+        public PdfViewState CaptureViewState(PdfViewer viewer)
+        {
+            var renderer = viewer.Renderer;
+
+            return new PdfViewState
+            (
+                zoom: renderer.Zoom,
+                zoomMode: renderer.ZoomMode,
+                rotation: renderer.Rotation,
+                scrollOffset: renderer.DisplayRectangle.Location,
+                pageIndex: renderer.Page
+            );
+        }
+
+        public void RestoreViewState(
+            PdfViewer viewer,
+            IPdfDocument document,
+            PdfViewState state)
+        {
+            viewer.Document = document;
+
+            var renderer = viewer.Renderer;
+
+            renderer.ZoomMode = state.ZoomMode;
+            renderer.Rotation = state.Rotation;
+            renderer.Zoom = state.Zoom;
+
+            renderer.SetDisplayRectLocation(state.ScrollOffset);
+        }
+
+        #endregion
+
         private void UpdateEnabled()
         {
             _toolStrip.Enabled = _document != null;
