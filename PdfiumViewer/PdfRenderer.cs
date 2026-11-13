@@ -504,8 +504,6 @@ namespace PdfiumViewer
             if (Document == null || _suspendPaintCount > 0)
                 return;
 
-            _pageCacheValid = true;
-
             int maxWidth = (int)(_maxWidth * _scaleFactor) + ShadeBorder.Size.Horizontal + PageMargin.Horizontal;
             int leftOffset = -maxWidth / 2;
 
@@ -550,17 +548,37 @@ namespace PdfiumViewer
 
                 offset += fullHeight;
             }
+
+            _pageCacheValid = true;
         }
 
         private List<PageLink> GetPageLinks(int page)
         {
+            if (Document == null ||
+                !_pageCacheValid ||
+                page < 0 ||
+                page >= Document.PageCount ||
+                page >= _pageCache.Count)
+            {
+                return new List<PageLink>();
+            }
+
             var pageCache = _pageCache[page];
+
             if (pageCache.Links == null)
             {
                 pageCache.Links = new List<PageLink>();
-                foreach (var link in Document.GetPageLinks(page, pageCache.Bounds.Size).Links)
+
+                foreach (var link in Document.GetPageLinks(
+                    page,
+                    pageCache.Bounds.Size).Links)
                 {
-                    pageCache.Links.Add(new PageLink(link, BoundsFromPdf(new PdfRectangle(page, link.Bounds), false)));
+                    pageCache.Links.Add(
+                        new PageLink(
+                            link,
+                            BoundsFromPdf(
+                                new PdfRectangle(page, link.Bounds),
+                                false)));
                 }
             }
 
@@ -750,24 +768,37 @@ namespace PdfiumViewer
         {
             _cachedLink = null;
 
-            if (_pageCacheValid)
+            if (Document != null &&
+                _pageCacheValid &&
+                _pageCache.Count > 0 &&
+                _visiblePageStart >= 0 &&
+                _visiblePageEnd >= _visiblePageStart)
             {
-                var offset = GetScrollOffset();
+                int firstPage = Math.Max(0, _visiblePageStart);
 
-                var location = new Point(
-                    e.Location.X - offset.Width,
-                    e.Location.Y - offset.Height
-                );
+                int lastPage = Math.Min(
+                    _visiblePageEnd,
+                    Math.Min(Document.PageCount - 1, _pageCache.Count - 1));
 
-                for (int page = _visiblePageStart; page <= _visiblePageEnd; page++)
+                if (firstPage <= lastPage)
                 {
-                    foreach (var link in GetPageLinks(page))
+                    var offset = GetScrollOffset();
+
+                    var location = new Point(
+                        e.Location.X - offset.Width,
+                        e.Location.Y - offset.Height
+                    );
+
+                    for (int page = firstPage; page <= lastPage; page++)
                     {
-                        if (link.Bounds.Contains(location))
+                        foreach (var link in GetPageLinks(page))
                         {
-                            _cachedLink = link;
-                            e.Cursor = Cursors.Hand;
-                            return;
+                            if (link.Bounds.Contains(location))
+                            {
+                                _cachedLink = link;
+                                e.Cursor = Cursors.Hand;
+                                return;
+                            }
                         }
                     }
                 }
