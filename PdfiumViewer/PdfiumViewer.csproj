@@ -5,12 +5,26 @@
 
 		<AssemblyName>PdfiumViewer</AssemblyName>
 		<RootNamespace>PdfiumViewer</RootNamespace>
+		<PackageId>PdfiumViewer.Refork</PackageId>
+		<Version>1.0.0</Version>
+		<Authors>YD359Team</Authors>
+		<Description>Windows Forms PDF viewer and renderer based on PDFium.</Description>
+		<PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/YD359Team/PdfiumViewer-refork</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/YD359Team/PdfiumViewer-refork</RepositoryUrl>
+		<PackageTags>pdf;pdfium;viewer;winforms</PackageTags>
+		<PackageReadmeFile>PACKAGE-README.md</PackageReadmeFile>
+		<GeneratePackageOnBuild>false</GeneratePackageOnBuild>
 
 		<Nullable>disable</Nullable>
 		<ImplicitUsings>disable</ImplicitUsings>
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 
 		<Platforms>AnyCPU;x86;x64</Platforms>
+	</PropertyGroup>
+
+	<PropertyGroup>
+		<PdfiumViewerNativeVersion>2018.4.8.256</PdfiumViewerNativeVersion>
 	</PropertyGroup>
 
 	<ItemGroup Condition="'$(TargetFramework)' == 'net48'">
@@ -22,5 +36,12 @@
 	<ItemGroup>
 		<EmbeddedResource Include="pan.cur"
 						  LogicalName="PdfiumViewer.pan.cur" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="PdfiumViewer.Native.x86.v8-xfa" Version="$(PdfiumViewerNativeVersion)" />
+		<PackageReference Include="PdfiumViewer.Native.x86_64.v8-xfa" Version="$(PdfiumViewerNativeVersion)" />
+		<Content Include="buildTransitive\PdfiumViewer.Refork.targets" Pack="true" PackagePath="buildTransitive\PdfiumViewer.Refork.targets" />
+		<Content Include="PACKAGE-README.md" Pack="true" PackagePath="PACKAGE-README.md" />
 	</ItemGroup>
 </Project>

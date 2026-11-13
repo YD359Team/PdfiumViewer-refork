@@ -187,17 +187,25 @@ namespace PdfiumViewer
         public void Render(int page, Graphics graphics, float dpiX, float dpiY, Rectangle bounds, PdfRenderFlags flags)
         {
             if (graphics == null)
-                throw new ArgumentNullException("graphics");
-            if (_disposed)
-                throw new ObjectDisposedException(GetType().Name);
+                throw new ArgumentNullException(nameof(graphics));
+            ValidatePage(page);
+            ValidateDpi(dpiX, nameof(dpiX));
+            ValidateDpi(dpiY, nameof(dpiY));
+            if (bounds.Width <= 0)
+                throw new ArgumentOutOfRangeException(nameof(bounds), "Bounds width must be positive.");
+            if (bounds.Height <= 0)
+                throw new ArgumentOutOfRangeException(nameof(bounds), "Bounds height must be positive.");
 
             float graphicsDpiX = graphics.DpiX;
             float graphicsDpiY = graphics.DpiY;
-
-            var dc = graphics.GetHdc();
-
+            IntPtr dc = graphics.GetHdc();
+            int savedDc = 0;
             try
             {
+                savedDc = NativeMethods.SaveDC(dc);
+                if (savedDc == 0)
+                    throw new Win32Exception();
+
                 if ((int)graphicsDpiX != (int)dpiX || (int)graphicsDpiY != (int)dpiY)
                 {
                     var transform = new NativeMethods.XFORM
@@ -206,29 +214,34 @@ namespace PdfiumViewer
                         eM22 = graphicsDpiY / dpiY
                     };
 
-                    NativeMethods.SetGraphicsMode(dc, NativeMethods.GM_ADVANCED);
-                    NativeMethods.ModifyWorldTransform(dc, ref transform, NativeMethods.MWT_LEFTMULTIPLY);
+                    if (NativeMethods.SetGraphicsMode(dc, NativeMethods.GM_ADVANCED) == 0)
+                        throw new Win32Exception();
+                    if (!NativeMethods.ModifyWorldTransform(dc, ref transform, NativeMethods.MWT_LEFTMULTIPLY))
+                        throw new Win32Exception();
                 }
 
-                var point = new NativeMethods.POINT();
-                NativeMethods.SetViewportOrgEx(dc, bounds.X, bounds.Y, out point);
+                if (!NativeMethods.SetViewportOrgEx(dc, bounds.X, bounds.Y, out _))
+                    throw new Win32Exception();
 
                 bool success = _file.RenderPDFPageToDC(
-                    page,
-                    dc,
-                    (int)dpiX, (int)dpiY,
+                    page, dc, (int)dpiX, (int)dpiY,
                     0, 0, bounds.Width, bounds.Height,
-                    FlagsToFPDFFlags(flags)
-                );
-
-                NativeMethods.SetViewportOrgEx(dc, point.X, point.Y, out point);
+                    FlagsToFPDFFlags(flags));
 
                 if (!success)
                     throw new Win32Exception();
             }
             finally
             {
-                graphics.ReleaseHdc(dc);
+                try
+                {
+                    if (savedDc != 0)
+                        NativeMethods.RestoreDC(dc, savedDc);
+                }
+                finally
+                {
+                    graphics.ReleaseHdc(dc);
+                }
             }
         }
 
@@ -242,8 +255,8 @@ namespace PdfiumViewer
         /// <returns>The rendered image.</returns>
         public Image Render(int page, float dpiX, float dpiY, bool forPrinting)
         {
+            ValidatePage(page);
             var size = PageSizes[page];
-
             return Render(page, (int)size.Width, (int)size.Height, dpiX, dpiY, forPrinting);
         }
 
@@ -257,8 +270,8 @@ namespace PdfiumViewer
         /// <returns>The rendered image.</returns>
         public Image Render(int page, float dpiX, float dpiY, PdfRenderFlags flags)
         {
+            ValidatePage(page);
             var size = PageSizes[page];
-
             return Render(page, (int)size.Width, (int)size.Height, dpiX, dpiY, flags);
         }
 
@@ -305,59 +318,86 @@ namespace PdfiumViewer
         /// <returns>The rendered image.</returns>
         public Image Render(int page, int width, int height, float dpiX, float dpiY, PdfRotation rotate, PdfRenderFlags flags)
         {
-            if (_disposed)
-                throw new ObjectDisposedException(GetType().Name);
+            ValidatePage(page);
+            ValidateDpi(dpiX, nameof(dpiX));
+            ValidateDpi(dpiY, nameof(dpiY));
+            if (width <= 0)
+                throw new ArgumentOutOfRangeException(nameof(width));
+            if (height <= 0)
+                throw new ArgumentOutOfRangeException(nameof(height));
 
             if ((flags & PdfRenderFlags.CorrectFromDpi) != 0)
             {
-                width = width * (int)dpiX / 72;
-                height = height * (int)dpiY / 72;
+                double scaledWidth = width * (double)dpiX / 72.0;
+                double scaledHeight = height * (double)dpiY / 72.0;
+                if (scaledWidth > Int32.MaxValue || scaledHeight > Int32.MaxValue)
+                    throw new ArgumentOutOfRangeException(nameof(width), "DPI-corrected bitmap dimensions are too large.");
+                width = (int)scaledWidth;
+                height = (int)scaledHeight;
+                if (width <= 0 || height <= 0)
+                    throw new ArgumentOutOfRangeException(nameof(width), "DPI-corrected bitmap dimensions must be positive.");
             }
 
             var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-            bitmap.SetResolution(dpiX, dpiY);
-
-            var data = bitmap.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.ReadWrite, bitmap.PixelFormat);
-
             try
             {
-                var handle = NativeMethods.FPDFBitmap_CreateEx(width, height, 4, data.Scan0, width * 4);
-
+                bitmap.SetResolution(dpiX, dpiY);
+                var data = bitmap.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.ReadWrite, bitmap.PixelFormat);
                 try
                 {
-                    uint background = (flags & PdfRenderFlags.Transparent) == 0 ? 0xFFFFFFFF : 0x00FFFFFF;
+                    IntPtr handle = NativeMethods.FPDFBitmap_CreateEx(width, height, 4, data.Scan0, checked(width * 4));
+                    if (handle == IntPtr.Zero)
+                        throw new InvalidOperationException("PDFium could not create a bitmap for rendering.");
 
-                    NativeMethods.FPDFBitmap_FillRect(handle, 0, 0, width, height, background);
+                    try
+                    {
+                        uint background = (flags & PdfRenderFlags.Transparent) == 0 ? 0xFFFFFFFF : 0x00FFFFFF;
+                        NativeMethods.FPDFBitmap_FillRect(handle, 0, 0, width, height, background);
+                        bool success = _file.RenderPDFPageToBitmap(
+                            page, handle, (int)dpiX, (int)dpiY,
+                            0, 0, width, height, (int)rotate,
+                            FlagsToFPDFFlags(flags),
+                            (flags & PdfRenderFlags.Annotations) != 0);
 
-                    bool success = _file.RenderPDFPageToBitmap(
-                        page,
-                        handle,
-                        (int)dpiX, (int)dpiY,
-                        0, 0, width, height,
-                        (int)rotate,
-                        FlagsToFPDFFlags(flags),
-                        (flags & PdfRenderFlags.Annotations) != 0
-                    );
-
-                    if (!success)
-                        throw new Win32Exception();
+                        if (!success)
+                            throw new Win32Exception();
+                    }
+                    finally
+                    {
+                        NativeMethods.FPDFBitmap_Destroy(handle);
+                    }
                 }
                 finally
                 {
-                    NativeMethods.FPDFBitmap_Destroy(handle);
+                    bitmap.UnlockBits(data);
                 }
-            }
-            finally
-            {
-                bitmap.UnlockBits(data);
-            }
 
-            return bitmap;
+                return bitmap;
+            }
+            catch
+            {
+                bitmap.Dispose();
+                throw;
+            }
         }
 
         private NativeMethods.FPDF FlagsToFPDFFlags(PdfRenderFlags flags)
         {
             return (NativeMethods.FPDF)(flags & ~(PdfRenderFlags.Transparent | PdfRenderFlags.CorrectFromDpi));
+        }
+
+        private void ValidatePage(int page)
+        {
+            if (_disposed)
+                throw new ObjectDisposedException(GetType().Name);
+            if (page < 0 || page >= PageCount)
+                throw new ArgumentOutOfRangeException(nameof(page));
+        }
+
+        private static void ValidateDpi(float dpi, string parameterName)
+        {
+            if (Single.IsNaN(dpi) || Single.IsInfinity(dpi) || dpi < 1.0f || (double)dpi > Int32.MaxValue)
+                throw new ArgumentOutOfRangeException(parameterName, "DPI must be finite and at least 1.");
         }
 
         /// <summary>
@@ -381,9 +421,12 @@ namespace PdfiumViewer
         /// <param name="stream">Stream to save the PDF document to.</param>
         public void Save(Stream stream)
         {
+            if (_disposed)
+                throw new ObjectDisposedException(GetType().Name);
             if (stream == null)
-                throw new ArgumentNullException("stream");
-
+                throw new ArgumentNullException(nameof(stream));
+            if (!stream.CanWrite)
+                throw new ArgumentException("The output stream must be writable.", nameof(stream));
             _file.Save(stream);
         }
 
@@ -531,6 +574,10 @@ namespace PdfiumViewer
         /// <returns></returns>
         public PrintDocument CreatePrintDocument(PdfPrintSettings settings)
         {
+            if (_disposed)
+                throw new ObjectDisposedException(GetType().Name);
+            if (settings == null)
+                throw new ArgumentNullException(nameof(settings));
             return new PdfPrintDocument(this, settings);
         }
 

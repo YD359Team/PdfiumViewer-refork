@@ -42,11 +42,15 @@ namespace PdfiumViewer
         public PdfPrintMultiplePages(int horizontal, int vertical, Orientation orientation, float margin)
         {
             if (horizontal < 1)
-                throw new ArgumentOutOfRangeException("horizontal cannot be less than one");
+                throw new ArgumentOutOfRangeException(nameof(horizontal), horizontal, "Horizontal page count must be at least one.");
             if (vertical < 1)
-                throw new ArgumentOutOfRangeException("vertical cannot be less than one");
-            if (margin < 0)
-                throw new ArgumentOutOfRangeException("margin cannot be less than zero");
+                throw new ArgumentOutOfRangeException(nameof(vertical), vertical, "Vertical page count must be at least one.");
+            if (!Enum.IsDefined(typeof(Orientation), orientation))
+                throw new ArgumentOutOfRangeException(nameof(orientation));
+            if (Single.IsNaN(margin) || Single.IsInfinity(margin) || margin < 0)
+                throw new ArgumentOutOfRangeException(nameof(margin), margin, "Margin must be finite and non-negative.");
+            if ((long)horizontal * vertical > Int32.MaxValue)
+                throw new ArgumentOutOfRangeException(nameof(horizontal), "The total pages per sheet is too large.");
 
             Horizontal = horizontal;
             Vertical = vertical;

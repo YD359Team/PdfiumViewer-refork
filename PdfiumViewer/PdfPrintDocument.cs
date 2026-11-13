@@ -33,7 +33,9 @@ namespace PdfiumViewer
         public PdfPrintDocument(IPdfDocument document, PdfPrintSettings settings)
         {
             if (document == null)
-                throw new ArgumentNullException("document");
+                throw new ArgumentNullException(nameof(document));
+            if (settings == null)
+                throw new ArgumentNullException(nameof(settings));
 
             _document = document;
             _settings = settings;
@@ -83,7 +85,7 @@ namespace PdfiumViewer
         {
             var settings = _settings.MultiplePages;
 
-            int pagesPerPage = settings.Horizontal * settings.Vertical;
+            int pagesPerPage = checked(settings.Horizontal * settings.Vertical);
             int pageCount = (_document.PageCount - 1) / pagesPerPage + 1;
 
             if (_currentPage < pageCount)
@@ -98,11 +100,11 @@ namespace PdfiumViewer
                 {
                     for (int vertical = 0; vertical < settings.Vertical; vertical++)
                     {
-                        int page = _currentPage * pagesPerPage;
+                        int page = checked(_currentPage * pagesPerPage);
                         if (settings.Orientation == System.Windows.Forms.Orientation.Horizontal)
-                            page += vertical * settings.Vertical + horizontal;
+                            page = checked(page + vertical * settings.Horizontal + horizontal);
                         else
-                            page += horizontal * settings.Horizontal + vertical;
+                            page = checked(page + horizontal * settings.Vertical + vertical);
 
                         if (page >= _document.PageCount)
                             continue;

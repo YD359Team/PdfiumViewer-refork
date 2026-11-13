@@ -25,17 +25,39 @@ namespace PdfiumViewer
         {
             if (stream == null)
                 throw new ArgumentNullException(nameof(stream));
+            if (!stream.CanRead || !stream.CanSeek)
+                throw new ArgumentException("The PDF stream must be readable and seekable.", nameof(stream));
+            if (stream.Length > UInt32.MaxValue)
+                throw new ArgumentException("The PDF stream exceeds the size supported by PDFium file access.", nameof(stream));
 
             PdfLibrary.EnsureLoaded();
 
             _stream = stream;
             _id = StreamManager.Register(stream);
 
-            var document = NativeMethods.FPDF_LoadCustomDocument(stream, password, _id);
-            if (document == IntPtr.Zero)
-                throw new PdfException((PdfError)NativeMethods.FPDF_GetLastError());
+            try
+            {
+                var document = NativeMethods.FPDF_LoadCustomDocument(stream, password, _id);
+                if (document == IntPtr.Zero)
+                    throw new PdfException((PdfError)NativeMethods.FPDF_GetLastError());
 
-            LoadDocument(document);
+                LoadDocument(document);
+            }
+            catch
+            {
+                try { DisposeNativeResources(); }
+                catch { /* Preserve the original load exception. */ }
+
+                StreamManager.Unregister(_id);
+                var failedStream = _stream;
+                _stream = null;
+                if (failedStream != null)
+                {
+                    try { failedStream.Dispose(); }
+                    catch { /* Preserve the original load exception. */ }
+                }
+                throw;
+            }
         }
 
         public PdfBookmarkCollection Bookmarks { get; private set; }
@@ -60,12 +82,13 @@ namespace PdfiumViewer
 
             using (var pageData = new PageData(_document, _form, pageNumber))
             {
-                if (renderFormFill)
+                bool canRenderFormFill = renderFormFill && _form != IntPtr.Zero;
+                if (canRenderFormFill)
                     flags &= ~NativeMethods.FPDF.ANNOT;
 
                 NativeMethods.FPDF_RenderPageBitmap(bitmapHandle, pageData.Page, boundsOriginX, boundsOriginY, boundsWidth, boundsHeight, rotate, flags);
 
-                if (renderFormFill)
+                if (canRenderFormFill)
                     NativeMethods.FPDF_FFLDraw(_form, bitmapHandle, pageData.Page, boundsOriginX, boundsOriginY, boundsWidth, boundsHeight, rotate, flags);
             }
 
@@ -146,38 +169,43 @@ namespace PdfiumViewer
 
         public void Save(Stream stream)
         {
-            NativeMethods.FPDF_SaveAsCopy(_document, stream, NativeMethods.FPDF_SAVE_FLAGS.FPDF_NO_INCREMENTAL);
+            if (_disposed)
+                throw new ObjectDisposedException(GetType().Name);
+            if (stream == null)
+                throw new ArgumentNullException(nameof(stream));
+            if (!stream.CanWrite)
+                throw new ArgumentException("The output stream must be writable.", nameof(stream));
+
+            if (!NativeMethods.FPDF_SaveAsCopy(_document, stream, NativeMethods.FPDF_SAVE_FLAGS.FPDF_NO_INCREMENTAL))
+                throw new PdfException((PdfError)NativeMethods.FPDF_GetLastError());
         }
 
         protected void LoadDocument(IntPtr document)
         {
             _document = document;
-
             NativeMethods.FPDF_GetDocPermissions(_document);
 
             _formCallbacks = new NativeMethods.FPDF_FORMFILLINFO();
             _formCallbacksHandle = GCHandle.Alloc(_formCallbacks, GCHandleType.Pinned);
 
-            // Depending on whether XFA support is built into the PDFium library, the version
-            // needs to be 1 or 2. We don't really care, so we just try one or the other.
-
+            // PDFium builds with different XFA support use form-info versions 1 or 2.
             for (int i = 1; i <= 2; i++)
             {
                 _formCallbacks.version = i;
-
                 _form = NativeMethods.FPDFDOC_InitFormFillEnvironment(_document, _formCallbacks);
                 if (_form != IntPtr.Zero)
                     break;
             }
 
-            NativeMethods.FPDF_SetFormFieldHighlightColor(_form, 0, 0xFFE4DD);
-            NativeMethods.FPDF_SetFormFieldHighlightAlpha(_form, 100);
-
-            NativeMethods.FORM_DoDocumentJSAction(_form);
-            NativeMethods.FORM_DoDocumentOpenAction(_form);
+            if (_form != IntPtr.Zero)
+            {
+                NativeMethods.FPDF_SetFormFieldHighlightColor(_form, 0, 0xFFE4DD);
+                NativeMethods.FPDF_SetFormFieldHighlightAlpha(_form, 100);
+                NativeMethods.FORM_DoDocumentJSAction(_form);
+                NativeMethods.FORM_DoDocumentOpenAction(_form);
+            }
 
             Bookmarks = new PdfBookmarkCollection();
-
             LoadBookmarks(Bookmarks, NativeMethods.FPDF_BookmarkGetFirstChild(document, IntPtr.Zero));
         }
 
@@ -604,33 +632,63 @@ namespace PdfiumViewer
 
         protected virtual void Dispose(bool disposing)
         {
-            if (!_disposed)
+            if (_disposed)
+                return;
+
+            _disposed = true;
+            try
             {
-                StreamManager.Unregister(_id);
-
-                if (_form != IntPtr.Zero)
+                DisposeNativeResources();
+            }
+            finally
+            {
+                try
                 {
-                    NativeMethods.FORM_DoDocumentAAction(_form, NativeMethods.FPDFDOC_AACTION.WC);
-                    NativeMethods.FPDFDOC_ExitFormFillEnvironment(_form);
-                    _form = IntPtr.Zero;
+                    StreamManager.Unregister(_id);
                 }
-
-                if (_document != IntPtr.Zero)
+                finally
                 {
-                    NativeMethods.FPDF_CloseDocument(_document);
-                    _document = IntPtr.Zero;
-                }
-
-                if (_formCallbacksHandle.IsAllocated)
-                    _formCallbacksHandle.Free();
-
-                if (_stream != null)
-                {
-                    _stream.Dispose();
+                    var stream = _stream;
                     _stream = null;
+                    if (stream != null)
+                        stream.Dispose();
                 }
+            }
+        }
 
-                _disposed = true;
+        private void DisposeNativeResources()
+        {
+            IntPtr form = _form;
+            _form = IntPtr.Zero;
+            IntPtr document = _document;
+            _document = IntPtr.Zero;
+
+            try
+            {
+                if (form != IntPtr.Zero)
+                {
+                    try
+                    {
+                        NativeMethods.FORM_DoDocumentAAction(form, NativeMethods.FPDFDOC_AACTION.WC);
+                    }
+                    finally
+                    {
+                        NativeMethods.FPDFDOC_ExitFormFillEnvironment(form);
+                    }
+                }
+            }
+            finally
+            {
+                try
+                {
+                    if (document != IntPtr.Zero)
+                        NativeMethods.FPDF_CloseDocument(document);
+                }
+                finally
+                {
+                    if (_formCallbacksHandle.IsAllocated)
+                        _formCallbacksHandle.Free();
+                }
             }
         }
 
@@ -638,40 +696,88 @@ namespace PdfiumViewer
         {
             private readonly IntPtr _form;
             private bool _disposed;
+            private bool _formPageLoaded;
+            private bool _formPageOpened;
 
             public IntPtr Page { get; private set; }
-
             public IntPtr TextPage { get; private set; }
-
             public double Width { get; private set; }
-
             public double Height { get; private set; }
 
             public PageData(IntPtr document, IntPtr form, int pageNumber)
             {
                 _form = form;
+                try
+                {
+                    Page = NativeMethods.FPDF_LoadPage(document, pageNumber);
+                    if (Page == IntPtr.Zero)
+                        throw new InvalidOperationException("PDFium could not load the requested page.");
 
-                Page = NativeMethods.FPDF_LoadPage(document, pageNumber);
-                TextPage = NativeMethods.FPDFText_LoadPage(Page);
-                NativeMethods.FORM_OnAfterLoadPage(Page, form);
-                NativeMethods.FORM_DoPageAAction(Page, form, NativeMethods.FPDFPAGE_AACTION.OPEN);
+                    TextPage = NativeMethods.FPDFText_LoadPage(Page);
+                    if (TextPage == IntPtr.Zero)
+                        throw new InvalidOperationException("PDFium could not create the page text handle.");
 
-                Width = NativeMethods.FPDF_GetPageWidth(Page);
-                Height = NativeMethods.FPDF_GetPageHeight(Page);
+                    if (_form != IntPtr.Zero)
+                    {
+                        NativeMethods.FORM_OnAfterLoadPage(Page, _form);
+                        _formPageLoaded = true;
+                        NativeMethods.FORM_DoPageAAction(Page, _form, NativeMethods.FPDFPAGE_AACTION.OPEN);
+                        _formPageOpened = true;
+                    }
+
+                    Width = NativeMethods.FPDF_GetPageWidth(Page);
+                    Height = NativeMethods.FPDF_GetPageHeight(Page);
+                }
+                catch
+                {
+                    try { Dispose(); }
+                    catch { /* Preserve the original page-load exception. */ }
+                    throw;
+                }
             }
 
             public void Dispose()
             {
-                if (!_disposed)
-                {
-                    NativeMethods.FORM_DoPageAAction(Page, _form, NativeMethods.FPDFPAGE_AACTION.CLOSE);
-                    NativeMethods.FORM_OnBeforeClosePage(Page, _form);
-                    NativeMethods.FPDFText_ClosePage(TextPage);
-                    NativeMethods.FPDF_ClosePage(Page);
+                if (_disposed)
+                    return;
+                _disposed = true;
 
-                    _disposed = true;
+                try
+                {
+                    if (Page != IntPtr.Zero && _formPageOpened)
+                        NativeMethods.FORM_DoPageAAction(Page, _form, NativeMethods.FPDFPAGE_AACTION.CLOSE);
+                }
+                finally
+                {
+                    try
+                    {
+                        if (Page != IntPtr.Zero && _formPageLoaded)
+                            NativeMethods.FORM_OnBeforeClosePage(Page, _form);
+                    }
+                    finally
+                    {
+                        try
+                        {
+                            if (TextPage != IntPtr.Zero)
+                            {
+                                IntPtr textPage = TextPage;
+                                TextPage = IntPtr.Zero;
+                                NativeMethods.FPDFText_ClosePage(textPage);
+                            }
+                        }
+                        finally
+                        {
+                            if (Page != IntPtr.Zero)
+                            {
+                                IntPtr page = Page;
+                                Page = IntPtr.Zero;
+                                NativeMethods.FPDF_ClosePage(page);
+                            }
+                        }
+                    }
                 }
             }
         }
+
     }
 }

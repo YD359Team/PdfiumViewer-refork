@@ -394,15 +394,52 @@ namespace PdfiumViewer
         public void Load(IPdfDocument document)
         {
             if (document == null)
-                throw new ArgumentNullException("document");
+                throw new ArgumentNullException(nameof(document));
             if (document.PageCount == 0)
-                throw new ArgumentException("Document does not contain any pages", "document");
+                throw new ArgumentException("Document does not contain any pages.", nameof(document));
 
+            ClearPageCache();
             Document = document;
-
-            SetDisplayRectLocation(new Point(0, 0));
-
+            SetDisplayRectLocation(Point.Empty);
             ReloadDocument();
+        }
+
+        /// <summary>
+        /// Unloads the currently displayed document without disposing it.
+        /// The document remains owned by the caller.
+        /// </summary>
+        public void Unload()
+        {
+            ClearPageCache();
+            Document = null;
+            _height = 0;
+            _maxWidth = 0;
+            _maxHeight = 0;
+            _documentScaleFactor = 0;
+            _markers = null;
+            _cachedLink = null;
+            _dragState = null;
+            SetDisplayRectLocation(Point.Empty);
+            SetDisplaySize(Size.Empty);
+            Invalidate();
+        }
+
+        private void ClearPageCache()
+        {
+            foreach (var pageCache in _pageCache)
+            {
+                if (pageCache.Image != null)
+                {
+                    pageCache.Image.Dispose();
+                    pageCache.Image = null;
+                }
+            }
+            _pageCache.Clear();
+            _pageCacheValid = false;
+            _cachedLink = null;
+            _dragState = null;
+            _visiblePageStart = -1;
+            _visiblePageEnd = -1;
         }
 
         private void ReloadDocument()
@@ -997,25 +1034,14 @@ namespace PdfiumViewer
                     _shadeBorder.Dispose();
                     _shadeBorder = null;
                 }
-
                 if (_toolTip != null)
                 {
                     _toolTip.Dispose();
                     _toolTip = null;
                 }
-
-                foreach (var pageCache in _pageCache)
-                {
-                    if (pageCache.Image != null)
-                    {
-                        pageCache.Image.Dispose();
-                        pageCache.Image = null;
-                    }
-                }
-
+                ClearPageCache();
                 _disposed = true;
             }
-
             base.Dispose(disposing);
         }
 

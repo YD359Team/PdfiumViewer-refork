@@ -25,14 +25,18 @@ namespace PdfiumViewer
             {
                 if (_document != value)
                 {
-                    _document = value;
-
-                    if (_document != null)
+                    if (value != null)
                     {
-                        _renderer.Load(_document);
-                        UpdateBookmarks();
+                        _renderer.Load(value);
+                        _document = value;
+                    }
+                    else
+                    {
+                        _renderer.Unload();
+                        _document = null;
                     }
 
+                    UpdateBookmarks();
                     UpdateEnabled();
                 }
             }
@@ -120,14 +124,11 @@ namespace PdfiumViewer
         private void UpdateBookmarks()
         {
             bool visible = _showBookmarks && _document != null && _document.Bookmarks.Count > 0;
-
             _container.Panel1Collapsed = !visible;
+            _bookmarks.Nodes.Clear();
 
             if (visible)
             {
-                _container.Panel1Collapsed = false;
-
-                _bookmarks.Nodes.Clear();
                 foreach (var bookmark in _document.Bookmarks)
                     _bookmarks.Nodes.Add(GetBookmarkNode(bookmark));
             }

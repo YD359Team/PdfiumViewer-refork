@@ -242,11 +242,11 @@ namespace PdfiumViewer
             }
         }
 
-        public static IntPtr FPDFBitmap_Destroy(IntPtr bitmapHandle)
+        public static void FPDFBitmap_Destroy(IntPtr bitmapHandle)
         {
             lock (LockString)
             {
-                return Imports.FPDFBitmap_Destroy(bitmapHandle);
+                Imports.FPDFBitmap_Destroy(bitmapHandle);
             }
         }
 
@@ -551,39 +551,76 @@ namespace PdfiumViewer
 
         private static int FPDF_GetBlock(IntPtr param, uint position, IntPtr buffer, uint size)
         {
-            var stream = StreamManager.Get((int)param);
-            if (stream == null)
-                return 0;
-            byte[] managedBuffer = new byte[size];
+            try
+            {
+                if (size > Int32.MaxValue || (size != 0 && buffer == IntPtr.Zero))
+                    return 0;
 
-            stream.Position = position;
-            int read = stream.Read(managedBuffer, 0, (int)size);
-            if (read != size)
-                return 0;
+                var stream = StreamManager.Get((int)param);
+                if (stream == null || !stream.CanRead || !stream.CanSeek)
+                    return 0;
 
-            Marshal.Copy(managedBuffer, 0, buffer, (int)size);
-            return 1;
+                long originalPosition = stream.Position;
+                try
+                {
+                    long length = stream.Length;
+                    long offset = position;
+                    if (offset > length || size > length - offset)
+                        return 0;
+
+                    stream.Position = offset;
+                    byte[] managedBuffer = new byte[(int)size];
+                    int totalRead = 0;
+                    while (totalRead < managedBuffer.Length)
+                    {
+                        int read = stream.Read(managedBuffer, totalRead, managedBuffer.Length - totalRead);
+                        if (read <= 0)
+                            return 0;
+                        totalRead += read;
+                    }
+
+                    if (managedBuffer.Length > 0)
+                        Marshal.Copy(managedBuffer, 0, buffer, managedBuffer.Length);
+
+                    return 1;
+                }
+                finally
+                {
+                    stream.Position = originalPosition;
+                }
+            }
+            catch
+            {
+                // Managed exceptions must not cross a native callback boundary.
+                return 0;
+            }
         }
 
         private static int FPDF_SaveBlock(IntPtr fileWrite, IntPtr data, uint size)
         {
-            var write = new FPDF_FILEWRITE();
-            Marshal.PtrToStructure(fileWrite, write);
-
-            var stream = StreamManager.Get((int)write.stream);
-            if (stream == null)
-                return 0;
-
-            byte[] buffer = new byte[size];
-            Marshal.Copy(data, buffer, 0, (int)size);
-
             try
             {
-                stream.Write(buffer, 0, (int)size);
-                return (int)size;
+                if (fileWrite == IntPtr.Zero || size > Int32.MaxValue ||
+                    (size != 0 && data == IntPtr.Zero))
+                    return 0;
+
+                var write = new FPDF_FILEWRITE();
+                Marshal.PtrToStructure(fileWrite, write);
+
+                var stream = StreamManager.Get((int)write.stream);
+                if (stream == null || !stream.CanWrite)
+                    return 0;
+
+                byte[] buffer = new byte[(int)size];
+                if (buffer.Length > 0)
+                    Marshal.Copy(data, buffer, 0, buffer.Length);
+
+                stream.Write(buffer, 0, buffer.Length);
+                return 1;
             }
             catch
             {
+                // Managed exceptions must not cross a native callback boundary.
                 return 0;
             }
         }
@@ -679,7 +716,7 @@ namespace PdfiumViewer
             public static extern void FPDFBitmap_FillRect(IntPtr bitmapHandle, int left, int top, int width, int height, uint color);
 
             [DllImport("pdfium.dll")]
-            public static extern IntPtr FPDFBitmap_Destroy(IntPtr bitmapHandle);
+            public static extern void FPDFBitmap_Destroy(IntPtr bitmapHandle);
 
             [DllImport("pdfium.dll")]
             public static extern IntPtr FPDFText_FindStart(IntPtr page, byte[] findWhat, FPDF_SEARCH_FLAGS flags, int start_index);
